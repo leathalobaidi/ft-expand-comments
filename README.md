@@ -29,11 +29,33 @@ A Chrome extension that brings back the classic Financial Times comment experien
 
 ### Manual Installation (Developer Mode)
 
-1. Download or clone this repository
-2. Open Chrome and go to `chrome://extensions/`
-3. Enable **Developer mode** (top-right corner)
-4. Click **Load unpacked**
-5. Select the `extension` folder from this repository
+#### Step 1: Download the extension
+
+1. Go to this page: https://github.com/leathalobaidi/ft-expand-comments
+2. Click the green **Code** button (near the top right)
+3. Click **Download ZIP** from the dropdown menu
+4. The file `ft-expand-comments-main.zip` will download to your Downloads folder
+5. **Unzip the file** — double-click it on Mac, or right-click → Extract All on Windows
+
+You'll now have a folder called `ft-expand-comments-main` containing:
+```
+ft-expand-comments-main/
+├── extension/        ← This is what you need!
+├── screenshots/
+├── README.md
+└── LICENSE
+```
+
+#### Step 2: Install in Chrome
+
+1. Open Chrome and type `chrome://extensions/` in the address bar
+2. Turn on **Developer mode** (toggle in the top-right corner)
+3. Click **Load unpacked** (button appears after enabling Developer mode)
+4. Navigate to the `ft-expand-comments-main` folder you unzipped
+5. Select the **`extension`** folder inside it (not the main folder!)
+6. Click **Select Folder**
+
+Done! You'll see the FT icon in your Chrome toolbar.
 
 ## 🛠️ How It Works
 
