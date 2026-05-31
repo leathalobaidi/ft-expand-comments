@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>FT Expand Comments — real-browser smoke test</title>
+<style>
+  body { font: 15px/1.5 -apple-system, system-ui, sans-serif; margin: 24px; color: #1a1a1a; background:#fff1e5; }
+  h1 { font-size: 18px; }
+  #bar { position: sticky; top: 0; background:#fff1e5; padding: 10px 0; border-bottom: 1px solid #ccc1b7; }
+  button { font: inherit; padding: 6px 14px; margin-right: 8px; cursor: pointer; border:1px solid #33302e; background:#fff; border-radius:4px; }
+  #verdict { font-weight: 700; padding: 10px; border-radius: 6px; margin: 12px 0; }
+  .pass { background:#d8f5d8; color:#0a5d0a; }
+  .fail { background:#f8d7d7; color:#7a0a0a; }
+  #counts { font-variant-numeric: tabular-nums; margin: 8px 0; }
+  /* The host page cannot style inside the shadow root; this mirrors FT visually. */
+  #host { border:1px solid #ccc1b7; padding: 8px; background:#fff; border-radius:6px; }
+</style>
+</head>
+<body>
+  <h1>FT Expand Comments — real-browser smoke test</h1>
+  <p>Drives the <strong>real</strong> <code>extension/content.js</code> against a realistic Coral
+     <strong>shadow-DOM</strong> thread (nested replies + "Load More" batches) in a real Chrome engine.</p>
+
+  <div id="bar">
+    <button id="expand">Expand All</button>
+    <button id="collapse">Collapse All</button>
+    <button id="reset">Reset thread</button>
+    <span id="counts"></span>
+    <div id="verdict"></div>
+  </div>
+
+  <div id="host"></div>
+
+  <!-- The actual shipped content script. In a plain page (no chrome.*) it only
+       exposes window.__ftExpand and does NOT run the extension runtime. -->
+  <script src="../extension/content.js"></script>
+  <script>
+  "use strict";
+
+  // ---- Build a Coral-Talk-like thread inside a real shadow root ----------
+  let uid = 0;
+  function renderComment(doc, parent, spec, indent) {
+    const wrap = doc.createElement("div");
+    wrap.className = "coral-comment coral-indent-" + indent;
+    wrap.setAttribute("data-comment-id", "c" + (++uid));
+    const body = doc.createElement("div");
+    body.textContent = spec.text || ("Comment by " + spec.name);
+    body.style.padding = "2px 0";
+    wrap.appendChild(body);
+
+    const toggle = doc.createElement("button");
+    const repliesHost = doc.createElement("div");
+    repliesHost.style.marginLeft = "18px";
+    repliesHost.style.borderLeft = "2px solid #eee";
+    repliesHost.style.paddingLeft = "10px";
+
+    function setCollapsed(isCollapsed) {
+      if (isCollapsed) {
+        toggle.setAttribute("aria-label", "Show comment by " + spec.name);
+        toggle.textContent = "▸ " + spec.name;
+        while (repliesHost.firstChild) repliesHost.removeChild(repliesHost.firstChild);
+      } else {
+        toggle.setAttribute("aria-label", "Hide comment by " + spec.name);
+        toggle.textContent = "▾ " + spec.name;
+        (spec.replies || []).forEach(function (r) { renderComment(doc, repliesHost, r, indent + 1); });
+      }
+    }
+    toggle.addEventListener("click", function () {
+      const collapsed = (toggle.getAttribute("aria-label") || "").startsWith("Show comment by");
+      setCollapsed(!collapsed);
+    });
+
+    wrap.appendChild(toggle);
+    wrap.appendChild(repliesHost);
+    parent.appendChild(wrap);
+    setCollapsed(spec.collapsed !== false);
+    return wrap;
+  }
+
+  function reply(name, replies) { return { name: name, collapsed: true, replies: replies || [] }; }
+
+  let shadowRoot = null;
+  function buildThread() {
+    uid = 0;
+    const host = document.getElementById("host");
+    host.innerHTML = "";
+    const container = document.createElement("div");
+    container.id = "coral-shadow-container";
+    host.appendChild(container);
+    shadowRoot = container.attachShadow({ mode: "open" });
+    const commentsEl = document.createElement("div");
+    commentsEl.className = "coral-comments";
+    shadowRoot.appendChild(commentsEl);
+
+    // Top-level shown expanded so their collapsed replies surface as "Show comment by".
+    const topLevel = [
+      { name: "Alice", collapsed: false, replies: [ reply("Bob", [ reply("Bob-jr") ]), reply("Carol") ] },
+      { name: "Dave",  collapsed: false, replies: [ reply("Erin") ] },
+    ];
+    topLevel.forEach(function (s) { renderComment(document, commentsEl, s, 0); });
+
+    // "Load More" pagination: two further batches of top-level comments.
+    const batches = [
+      [ { name: "Frank", collapsed: false, replies: [ reply("Grace") ] } ],
+      [ { name: "Heidi", collapsed: false, replies: [ reply("Ivan") ] } ],
+    ];
+    const loadMore = document.createElement("button");
+    loadMore.className = "coral-load-more";
+    loadMore.textContent = "Load More";
+    loadMore.addEventListener("click", function () {
+      const batch = batches.shift();
+      if (batch) batch.forEach(function (s) { renderComment(document, commentsEl, s, 0); });
+      if (batches.length === 0 && loadMore.parentNode) loadMore.parentNode.removeChild(loadMore);
+    });
+    shadowRoot.appendChild(loadMore);
+    refresh();
+  }
+
+  // ---- Counts + verdict --------------------------------------------------
+  function btns() { return Array.from(shadowRoot.querySelectorAll("button")); }
+  function countCollapsed() { return btns().filter(function (b) { return (b.getAttribute("aria-label")||"").startsWith("Show comment by"); }).length; }
+  function countExpanded() { return btns().filter(function (b) { return (b.getAttribute("aria-label")||"").startsWith("Hide comment by"); }).length; }
+  function hasLoadMore() { return !!shadowRoot.querySelector(".coral-load-more"); }
+
+  function refresh(msg, ok) {
+    document.getElementById("counts").textContent =
+      "collapsed: " + countCollapsed() + "  •  expanded: " + countExpanded() + "  •  LoadMore present: " + hasLoadMore();
+    const v = document.getElementById("verdict");
+    if (msg) { v.textContent = msg; v.className = ok ? "pass" : "fail"; }
+  }
+
+  // ---- Wire the REAL extension api --------------------------------------
+  const api = window.__ftExpand;
+  document.getElementById("expand").addEventListener("click", async function () {
+    if (!api) { refresh("FAIL: window.__ftExpand not found — content.js did not expose its API", false); return; }
+    const res = await api.expandUntilStable(shadowRoot, { force: true });
+    const ok = res.stable && countCollapsed() === 0 && !hasLoadMore();
+    refresh("Expand All → " + (ok ? "PASS" : "FAIL") +
+      " (expanded " + res.expanded + ", loadMore " + res.loadMore + ", stable " + res.stable +
+      ", collapsed-left " + countCollapsed() + ", LoadMore " + hasLoadMore() + ")", ok);
+  });
+  document.getElementById("collapse").addEventListener("click", function () {
+    if (!api) { refresh("FAIL: window.__ftExpand not found", false); return; }
+    const n = api.collapseReplies(shadowRoot);
+    const ok = countExpanded() === 4 && countCollapsed() > 0; // 4 top-level (Alice,Dave,Frank,Heidi) stay
+    refresh("Collapse All → " + (ok ? "PASS" : "FAIL") +
+      " (collapsed " + n + " replies; top-level still expanded " + countExpanded() + ")", ok);
+  });
+  document.getElementById("reset").addEventListener("click", buildThread);
+
+  buildThread();
+  // Surface api availability immediately.
+  refresh(api ? "Ready — content.js API loaded (window.__ftExpand present)"
+              : "FAIL: window.__ftExpand missing", !!api);
+  </script>
+</body>
+</html>
