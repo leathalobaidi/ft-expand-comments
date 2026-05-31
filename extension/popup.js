@@ -17,6 +17,21 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 3000);
   }
 
+  // Map raw chrome errors to something a human can act on.
+  function friendlyError(message) {
+    const m = (message || "").toLowerCase();
+    if (m.includes("could not establish connection") || m.includes("receiving end does not exist")) {
+      return "Open an FT article and scroll to the comments, then try again";
+    }
+    if (m.includes("not on an ft page")) {
+      return "Open an FT article (www.ft.com) to use this";
+    }
+    if (m.includes("not loaded")) {
+      return "Comments not loaded yet — scroll to the comments and retry";
+    }
+    return message || "Something went wrong";
+  }
+
   function sendMessageToContentScript(action, data = {}) {
     return new Promise((resolve, reject) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -42,20 +57,29 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Expand All button
   expandBtn.addEventListener("click", async () => {
+    expandBtn.disabled = true;
+    showStatus("Expanding…");
     try {
       const response = await sendMessageToContentScript("expand");
       if (response.count > 0) {
-        showStatus(`Expanded ${response.count} comments`);
+        const more = response.loadMore ? ` (+${response.loadMore} threads loaded)` : "";
+        const partial = response.stable === false ? " — large thread, run again for the rest" : "";
+        showStatus(`Expanded ${response.count} comments${more}${partial}`);
+      } else if (response.loadMore > 0) {
+        showStatus(`Loaded ${response.loadMore} more threads`);
       } else {
-        showStatus("No comments to expand");
+        showStatus("Nothing left to expand");
       }
     } catch (err) {
-      showStatus(err.message, true);
+      showStatus(friendlyError(err.message), true);
+    } finally {
+      expandBtn.disabled = false;
     }
   });
 
   // Collapse All button
   collapseBtn.addEventListener("click", async () => {
+    collapseBtn.disabled = true;
     try {
       const response = await sendMessageToContentScript("collapse");
       if (response.count > 0) {
@@ -64,7 +88,9 @@ document.addEventListener("DOMContentLoaded", () => {
         showStatus("No replies to collapse");
       }
     } catch (err) {
-      showStatus(err.message, true);
+      showStatus(friendlyError(err.message), true);
+    } finally {
+      collapseBtn.disabled = false;
     }
   });
 

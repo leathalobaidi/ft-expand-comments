@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <style>
@@ -46,6 +46,11 @@
 
     .btn-collapse:hover {
       background: #ff8a65;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: progress;
     }
 
     .divider {
@@ -151,16 +156,17 @@
 
   <div class="toggle-container">
     <div>
-      <div class="toggle-label">Always Expand</div>
-      <div class="toggle-sublabel">Auto-expand on every article</div>
+      <div class="toggle-label" id="alwaysExpandLabel">Always Expand</div>
+      <div class="toggle-sublabel" id="alwaysExpandSublabel">Auto-expand on every article</div>
     </div>
     <label class="switch">
-      <input type="checkbox" id="alwaysExpandToggle">
+      <input type="checkbox" id="alwaysExpandToggle"
+             aria-labelledby="alwaysExpandLabel" aria-describedby="alwaysExpandSublabel">
       <span class="slider"></span>
     </label>
   </div>
 
-  <div id="status" class="status"></div>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
 
   <script src="popup.js"></script>
 </body>
