@@ -1,0 +1,95 @@
+FT EXPAND ALL COMMENTS — CHROME WEB STORE LISTING (v2.2)
+=========================================================
+Upload: zip the extension/ folder (the one containing manifest.json), upload as a
+new package version on https://chrome.google.com/webstore/devconsole
+Manifest version: 2.2  (must be higher than the currently published version)
+
+────────────────────────────────────────────────────────────────────────
+STORE LISTING TAB
+────────────────────────────────────────────────────────────────────────
+
+NAME:
+FT Expand All Comments
+
+SUMMARY (≤132 chars):
+Expand or collapse every comment on a Financial Times article in one click — nested replies and "load more" included.
+
+DESCRIPTION:
+FT Expand All Comments adds a one-click control to Financial Times articles that
+opens — or collapses — the entire comment discussion at once.
+
+WHAT IT DOES
+• Expand all: opens every collapsed thread and keeps clicking "show more replies"
+  / "view N replies" / "load more comments" until the whole discussion is on screen,
+  then stops.
+• Collapse all: returns the thread to a clean, collapsed baseline.
+• Always Expand mode: automatically expands threads as the page loads (and respects
+  any comment you collapse yourself — it won't fight you).
+
+BUILT TO BE INVISIBLE
+• Does nothing on FT pages without a comment section — no stray button, no console noise.
+• Survives FT's lazy-loaded, dynamically-mounted comment widget and single-page navigation.
+• Bounded and safe: never hangs on a stuck "load more", never loses your place.
+
+PRIVACY
+• Collects no data, sends nothing to any server, has no account and no tracking.
+• Works only on www.ft.com, and only acts when you click or with Always Expand on.
+
+CATEGORY:
+Productivity
+
+LANGUAGE:
+English (United Kingdom)
+
+────────────────────────────────────────────────────────────────────────
+PRIVACY TAB
+────────────────────────────────────────────────────────────────────────
+
+SINGLE PURPOSE DESCRIPTION:
+Expand or collapse all reply comments on a Financial Times article with one click.
+
+ARE YOU USING REMOTE CODE?
+No — all scripts are bundled in the package; nothing is fetched or executed from a remote source.
+
+DATA USE CERTIFICATIONS — CHECK ALL THREE:
+[x] Does not sell user data
+[x] Does not use/transfer user data for purposes unrelated to the single purpose
+[x] Does not use/transfer user data to determine creditworthiness / for lending
+
+DATA COLLECTION — SELECT "NO" FOR ALL:
+• Personally identifiable information: No
+• Health information: No
+• Financial and payment information: No
+• Authentication information: No
+• Personal communications: No
+• Location: No
+• Web history: No
+• User activity: No
+• Website content: No
+  (The extension only clicks the page's own expand/collapse controls and reads
+   nothing off the page; no comment text is collected or transmitted.)
+
+────────────────────────────────────────────────────────────────────────
+PERMISSION JUSTIFICATIONS
+────────────────────────────────────────────────────────────────────────
+
+activeTab:
+Lets the toolbar popup talk to the Financial Times article in the current tab only,
+on user action, to trigger expand/collapse. No broad tab access is requested.
+
+storage:
+Stores a single on/off preference ("Always Expand") so the choice persists across
+page loads. No personal data is stored.
+
+Host access (content script on https://www.ft.com/*):
+The expand/collapse logic must run inside FT article pages to find and toggle the
+comment threads. Scope is limited to www.ft.com; no other site is accessed.
+
+────────────────────────────────────────────────────────────────────────
+GRAPHICS TO UPLOAD
+────────────────────────────────────────────────────────────────────────
+1. Icon 128×128 — extension/icon128.png
+2. Screenshot 1280×800 (or 640×400) — REQUIRED, still to capture (an FT thread before/after Expand All)
+3. Small promo tile 440×280 — optional
+
+NOTE: do not include GOAL_PROMPT / report / tests in the uploaded zip — package the extension/ folder only.
