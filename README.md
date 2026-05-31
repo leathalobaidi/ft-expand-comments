@@ -67,6 +67,20 @@ The extension interacts with FT's Coral Talk comment widget, which renders insid
 4. Provides manual expand/collapse controls via the popup
 5. Optionally auto-expands comments using a MutationObserver
 
+## 🧪 Testing
+
+Automated tests (Node's built-in runner + jsdom) cover the comment-expansion logic,
+the popup message API, accessibility markup, and adversarial/chaos cases against
+deterministic Coral-like fixtures:
+
+```bash
+cd tests
+npm install
+node --test
+```
+
+See [`BUILD-TEST-REPORT.md`](BUILD-TEST-REPORT.md) for the full PASS/FAIL matrix and review notes.
+
 ## 🔒 Privacy
 
 This extension:

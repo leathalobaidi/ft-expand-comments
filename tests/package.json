@@ -1,0 +1,12 @@
+{
+  "name": "ft-expand-comments-tests",
+  "version": "2.1.0",
+  "private": true,
+  "description": "Automated test harness for the FT Expand All Comments extension",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  }
+}
