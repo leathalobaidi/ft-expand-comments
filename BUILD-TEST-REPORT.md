@@ -3,7 +3,7 @@
 **Date:** 2026-05-31
 **Scope:** Autonomous end-to-end audit, repair, test-harness build, chaos testing, and
 expert-persona review of the Chrome extension at `leathalobaidi/ft-expand-comments`.
-**Result:** ✅ **READY** — 29/29 automated tests pass; no blocking persona objections remain.
+**Result:** ✅ **READY** — 34/34 automated tests pass; no blocking persona objections remain.
 
 ---
 
@@ -13,7 +13,7 @@ expert-persona review of the Chrome extension at `leathalobaidi/ft-expand-commen
 *exhaustively* (nested replies + "Load More" pagination, not just top-level toggles), handles
 empty/huge/malformed/unicode threads without crashing, recovers from single-page navigation,
 guards against double injection and timer leaks, and degrades to clear, human-readable messages
-when comments aren't loaded. The core DOM logic is covered by 29 automated tests (unit +
+when comments aren't loaded. The core DOM logic is covered by 34 automated tests (unit +
 integration + chaos). The one accessibility gap found in review (an unlabelled toggle) is fixed.
 Residual risk is the usual one for any DOM-scraping extension: FT changing Coral's markup/labels —
 mitigated with conservative, well-bounded selectors but not eliminable.
@@ -71,8 +71,10 @@ mitigated with conservative, well-bounded selectors but not eliminable.
 | **Regression (B8)** | Always-Expand ON: user in-page collapse not auto-undone | collapse sticks | ✅ PASS |
 | **Regression (B8)** | popup "Expand All" force-clears a user collapse | re-opens all | ✅ PASS |
 | **Regression (B8)** | programmatic expand never flags a comment as user-collapsed | no false flags | ✅ PASS |
+| Expand (B8) | `expandPass(force=false)` respects `__ftUserCollapsed`; `force=true` clears it | skip then override | ✅ PASS |
+| Expand (B8) | `expandPass` with no `force` arg defaults to respecting user collapse | legacy call safe | ✅ PASS |
 
-**Totals: 32 tests, 32 pass, 0 fail** (`cd tests && npm install && node --test`).
+**Totals: 34 tests, 34 pass, 0 fail** (`cd tests && npm install && node --test`).
 
 ---
 
