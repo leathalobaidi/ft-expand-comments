@@ -68,7 +68,11 @@ mitigated with conservative, well-bounded selectors but not eliminable.
 | **Chaos** | collapse before expand | safe no-op | ✅ PASS |
 | Popup a11y | `lang`, live region, toggle accessible name, button text, disabled style | all present | ✅ PASS (5 tests) |
 
-**Totals: 29 tests, 29 pass, 0 fail** (`cd tests && npm install && node --test`).
+| **Regression (B8)** | Always-Expand ON: user in-page collapse not auto-undone | collapse sticks | ✅ PASS |
+| **Regression (B8)** | popup "Expand All" force-clears a user collapse | re-opens all | ✅ PASS |
+| **Regression (B8)** | programmatic expand never flags a comment as user-collapsed | no false flags | ✅ PASS |
+
+**Totals: 32 tests, 32 pass, 0 fail** (`cd tests && npm install && node --test`).
 
 ---
 
@@ -83,6 +87,7 @@ mitigated with conservative, well-bounded selectors but not eliminable.
 | B5 | Low | Double injection would stack observers/intervals | Re-inject content script | `__ftExpandInit` guard (change #3) |
 | B6 | Low | Raw Chrome error shown to user ("Could not establish connection…") | Click Expand on an FT page before comments load | `friendlyError()` mapping (change #7) |
 | B7 | Low (a11y) | "Always Expand" checkbox had no accessible name | Screen reader on popup | `aria-labelledby`/`aria-describedby` (change #8) |
+| B8 | **High** | With **Always Expand ON**, collapsing a comment via FT's own in-page caret was instantly undone — the auto-expander re-opened it. Manual collapse couldn't "stick". | Enable Always Expand, open an FT thread, click a comment's collapse caret → it springs back open | Distinguish real user clicks from the extension's own programmatic clicks (`_programmaticDepth` guard); a capture-phase listener marks user-collapsed comments (`__ftUserCollapsed`); auto-expand skips them, while popup "Expand All" force-clears the mark. Listener attaches via both `waitForCoral` and `getShadowRoot` so it's live regardless of interaction order. Regression-tested. |
 
 No open bugs.
 

@@ -151,3 +151,38 @@ test("unicode / emoji author names are handled", async () => {
   assert.equal(res.stable, true);
   assert.equal(countCollapsed(shadowRoot), 0);
 });
+
+test("expandPass(force=false) respects __ftUserCollapsed; force=true clears it", () => {
+  const { shadowRoot } = buildThread(makeWindow, scenarios.short());
+  const collapsedBtns = Array.from(shadowRoot.querySelectorAll("button")).filter((b) =>
+    (b.getAttribute("aria-label") || "").startsWith("Show comment by")
+  );
+  const before = collapsedBtns.length;
+  assert.ok(before >= 2, "fixture starts with multiple collapsed replies");
+
+  // The user deliberately collapsed this one.
+  const userKept = collapsedBtns[0];
+  userKept.__ftUserCollapsed = true;
+
+  // Auto-expand (non-force) opens everything EXCEPT the user-collapsed reply.
+  const res1 = api.expandPass(shadowRoot, false);
+  assert.equal(res1.expanded, before - 1, "all but the user-collapsed reply expanded");
+  assert.equal(countCollapsed(shadowRoot), 1, "the user-collapsed reply stays collapsed");
+  assert.equal(userKept.__ftUserCollapsed, true, "mark preserved under non-force");
+
+  // The popup's "Expand All" (force) overrides the user mark and clears it.
+  const res2 = api.expandPass(shadowRoot, true);
+  assert.equal(res2.expanded, 1, "the previously-kept reply now expands under force");
+  assert.equal(userKept.__ftUserCollapsed, false, "force clears the user-collapse mark");
+  assert.equal(countCollapsed(shadowRoot), 0, "nothing collapsed after a force pass");
+});
+
+test("expandPass with no force argument defaults to respecting user collapse", () => {
+  const { shadowRoot } = buildThread(makeWindow, scenarios.short());
+  const btn = Array.from(shadowRoot.querySelectorAll("button")).find((b) =>
+    (b.getAttribute("aria-label") || "").startsWith("Show comment by")
+  );
+  btn.__ftUserCollapsed = true;
+  api.expandPass(shadowRoot); // legacy 1-arg call site
+  assert.equal(countCollapsed(shadowRoot), 1, "default pass leaves the user-collapsed reply alone");
+});

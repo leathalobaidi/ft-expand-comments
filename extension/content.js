@@ -96,12 +96,33 @@
     return looksLikeMore;
   }
 
+  // Depth counter so we can tell our own programmatic clicks apart from real
+  // user clicks: any click dispatched while this is > 0 is one of ours.
+  let _programmaticDepth = 0;
+  function clickEl(el) {
+    _programmaticDepth++;
+    try {
+      el.click();
+    } finally {
+      _programmaticDepth--;
+    }
+  }
+  function isProgrammaticClick() {
+    return _programmaticDepth > 0;
+  }
+
   /**
    * One synchronous expansion sweep over a root (shadowRoot or element).
    * Clicks every collapsed-comment toggle and every load-more trigger found.
+   *
+   * When `force` is false (auto-expand), comments the user collapsed themselves
+   * (marked with __ftUserCollapsed) are left alone so the auto-expander does not
+   * fight a manual collapse. When `force` is true (the popup's "Expand All"),
+   * everything is expanded and any user-collapse marks are cleared.
+   *
    * Returns { expanded, loadMore } click counts.
    */
-  function expandPass(root) {
+  function expandPass(root, force) {
     if (!root || typeof root.querySelectorAll !== "function") {
       return { expanded: 0, loadMore: 0 };
     }
@@ -111,10 +132,13 @@
     for (const btn of buttons) {
       try {
         if (isShowCommentButton(btn)) {
-          btn.click();
-          expanded++;
+          if (force || !btn.__ftUserCollapsed) {
+            if (force) btn.__ftUserCollapsed = false;
+            clickEl(btn);
+            expanded++;
+          }
         } else if (isLoadMoreTrigger(btn)) {
-          btn.click();
+          clickEl(btn);
           loadMore++;
         }
       } catch (_) {
@@ -135,7 +159,7 @@
     for (const btn of buttons) {
       try {
         if (isHideCommentButton(btn) && getIndentLevel(btn) >= 1) {
-          btn.click();
+          clickEl(btn);
           count++;
         }
       } catch (_) {
@@ -155,6 +179,7 @@
     const maxIterations = opts.maxIterations || EXPAND_MAX_ITERATIONS;
     const delayMs = opts.delayMs != null ? opts.delayMs : EXPAND_SETTLE_MS;
     const sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+    const force = opts.force === true;
 
     const buttonCount = (r) =>
       r && typeof r.querySelectorAll === "function" ? r.querySelectorAll("button").length : 0;
@@ -165,7 +190,7 @@
     let noProgress = 0;
     let prevSig = -1;
     while (iterations < maxIterations) {
-      const pass = expandPass(root);
+      const pass = expandPass(root, force);
       expanded += pass.expanded;
       loadMore += pass.loadMore;
       iterations++;
@@ -262,11 +287,15 @@
       cachedShadowRoot.host &&
       cachedShadowRoot.host.isConnected
     ) {
+      attachUserToggleListener(cachedShadowRoot);
       return cachedShadowRoot;
     }
     const container = document.getElementById(CORAL_CONTAINER_ID);
     if (container && container.shadowRoot) {
       cachedShadowRoot = container.shadowRoot;
+      // Ensure the manual-collapse listener is live even if waitForCoral
+      // hasn't fired yet (e.g. popup interaction happened first).
+      attachUserToggleListener(cachedShadowRoot);
       return cachedShadowRoot;
     }
     return null;
@@ -276,15 +305,54 @@
     if (!autoExpandEnabled || manualCollapseActive) return;
     const sr = getShadowRoot();
     if (!sr) return;
-    const { expanded, loadMore } = expandPass(sr);
+    // Non-force: respect comments the user collapsed themselves.
+    const { expanded, loadMore } = expandPass(sr, false);
     if (expanded || loadMore) {
       log(`Auto-expanded ${expanded} comments, clicked ${loadMore} load-more.`);
     }
   }
 
+  // Detect a real user click on a comment's collapse/expand caret (inside the
+  // Coral shadow root) so auto-expand doesn't undo a manual collapse. Runs in
+  // the capture phase so we read the button's label BEFORE Coral flips it.
+  let userToggleHandler = null;
+  let listenerRoot = null;
+  function attachUserToggleListener(shadowRoot) {
+    if (!shadowRoot) return;
+    // Idempotent: already listening on this exact root → nothing to do.
+    if (listenerRoot === shadowRoot && userToggleHandler) return;
+    // Switched roots (e.g. SPA re-render) → detach the old listener first.
+    if (listenerRoot && userToggleHandler) {
+      try {
+        listenerRoot.removeEventListener("click", userToggleHandler, true);
+      } catch (_) {}
+    }
+    listenerRoot = shadowRoot;
+    userToggleHandler = (e) => {
+      if (isProgrammaticClick()) return; // one of our own clicks — ignore
+      const target = e.target;
+      const btn =
+        target && typeof target.closest === "function"
+          ? target.closest("button")
+          : null;
+      if (!btn) return;
+      if (isHideCommentButton(btn)) {
+        btn.__ftUserCollapsed = true; // user is collapsing this comment
+      } else if (isShowCommentButton(btn)) {
+        btn.__ftUserCollapsed = false; // user is expanding this comment
+      }
+    };
+    shadowRoot.addEventListener("click", userToggleHandler, true);
+  }
+
   function teardown() {
     try {
       if (observer) observer.disconnect();
+    } catch (_) {}
+    try {
+      if (listenerRoot && userToggleHandler) {
+        listenerRoot.removeEventListener("click", userToggleHandler, true);
+      }
     } catch (_) {}
     if (periodicCheck) clearInterval(periodicCheck);
     if (debounceTimer) clearTimeout(debounceTimer);
@@ -293,12 +361,15 @@
     periodicCheck = null;
     debounceTimer = null;
     waitInterval = null;
+    userToggleHandler = null;
+    listenerRoot = null;
   }
   // Exposed so tests (and any future cleanup needs) can stop all activity.
   global.__ftExpandTeardown = teardown;
 
   function initializeCommentHandling(shadowRoot) {
     cachedShadowRoot = shadowRoot;
+    attachUserToggleListener(shadowRoot);
 
     chrome.storage.sync.get(["alwaysExpand"], (result) => {
       if (chrome.runtime.lastError) {
@@ -360,7 +431,9 @@
     switch (message && message.action) {
       case "expand": {
         manualCollapseActive = false;
-        expandUntilStable(sr)
+        // Explicit user action: force-expand everything, clearing prior manual
+        // collapse marks.
+        expandUntilStable(sr, { force: true })
           .then((res) => {
             log(
               `Manual expand: ${res.expanded} comments, ${res.loadMore} load-more, ` +
@@ -392,7 +465,7 @@
         manualCollapseActive = false;
         log(`Auto-expand set to: ${autoExpandEnabled}`);
         if (autoExpandEnabled) {
-          expandUntilStable(sr)
+          expandUntilStable(sr, { force: true })
             .then((res) => sendResponse({ success: true, count: res.expanded }))
             .catch(() => sendResponse({ success: true, count: 0 }));
           return true;
