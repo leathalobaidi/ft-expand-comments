@@ -9,13 +9,29 @@ document.addEventListener("DOMContentLoaded", () => {
     alwaysExpandToggle.checked = result.alwaysExpand === true;
   });
 
-  function showStatus(message, isError = false) {
+  let statusTimer = null;
+  function showStatus(message, isError = false, sticky = false) {
     statusDiv.textContent = message;
     statusDiv.className = "status " + (isError ? "error" : "success");
-    setTimeout(() => {
-      statusDiv.className = "status";
-    }, 3000);
+    if (statusTimer) clearTimeout(statusTimer);
+    if (!sticky) {
+      statusTimer = setTimeout(() => {
+        statusDiv.className = "status";
+      }, 3000);
+    }
   }
+
+  // Grey the action buttons out immediately when this isn't an FT tab, instead
+  // of letting the user click into an error.
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const url = tabs && tabs[0] && tabs[0].url;
+    // activeTab makes the URL visible here; if it isn't, fail open.
+    if (url !== undefined && !String(url).includes("ft.com")) {
+      expandBtn.disabled = true;
+      collapseBtn.disabled = true;
+      showStatus("Open an FT article (www.ft.com) to use this", true, true);
+    }
+  });
 
   // Map raw chrome errors to something a human can act on.
   function friendlyError(message) {
@@ -32,27 +48,56 @@ document.addEventListener("DOMContentLoaded", () => {
     return message || "Something went wrong";
   }
 
-  function sendMessageToContentScript(action, data = {}) {
+  function sendOnce(tabId, payload) {
     return new Promise((resolve, reject) => {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const tab = tabs[0];
-
-        if (!tab || !tab.url || !tab.url.includes("ft.com")) {
-          reject(new Error("Not on an FT page"));
-          return;
+      chrome.tabs.sendMessage(tabId, payload, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (response && response.success) {
+          resolve(response);
+        } else {
+          reject(new Error(response?.error || "Unknown error"));
         }
-
-        chrome.tabs.sendMessage(tab.id, { action, ...data }, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else if (response && response.success) {
-            resolve(response);
-          } else {
-            reject(new Error(response?.error || "Unknown error"));
-          }
-        });
       });
     });
+  }
+
+  // The content script is missing on FT tabs that were already open when the
+  // extension was installed or updated. activeTab + scripting lets us inject
+  // it on demand so the popup "just works" without a page reload.
+  function injectContentScript(tabId) {
+    return new Promise((resolve, reject) => {
+      if (!chrome.scripting || !chrome.scripting.executeScript) {
+        reject(new Error("scripting unavailable"));
+        return;
+      }
+      chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] }, () => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve();
+      });
+    });
+  }
+
+  async function sendMessageToContentScript(action, data = {}) {
+    const tabs = await new Promise((resolve) =>
+      chrome.tabs.query({ active: true, currentWindow: true }, resolve)
+    );
+    const tab = tabs && tabs[0];
+    if (!tab || !tab.url || !tab.url.includes("ft.com")) {
+      throw new Error("Not on an FT page");
+    }
+    const payload = { action, ...data };
+    try {
+      return await sendOnce(tab.id, payload);
+    } catch (err) {
+      const m = (err.message || "").toLowerCase();
+      const noReceiver =
+        m.includes("could not establish connection") || m.includes("receiving end does not exist");
+      if (!noReceiver) throw err;
+      await injectContentScript(tab.id);
+      await new Promise((r) => setTimeout(r, 400));
+      return await sendOnce(tab.id, payload);
+    }
   }
 
   // Expand All button
@@ -103,7 +148,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Notify content script of the change
     try {
-      const response = await sendMessageToContentScript("setAutoExpand", { enabled });
+      await sendMessageToContentScript("setAutoExpand", { enabled });
       if (enabled) {
         showStatus("Always Expand enabled");
       } else {

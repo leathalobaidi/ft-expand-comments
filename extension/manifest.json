@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "FT Expand All Comments",
   "description": "Expand or collapse reply comments on Financial Times articles. Includes Always Expand mode.",
-  "version": "2.2",
-  "permissions": ["activeTab", "storage"],
+  "version": "2.3",
+  "permissions": ["activeTab", "storage", "scripting"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -12,6 +12,9 @@
       "128": "icon128.png"
     },
     "default_title": "Expand / collapse all FT comments"
+  },
+  "background": {
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {

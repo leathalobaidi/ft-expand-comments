@@ -12,6 +12,20 @@ A Chrome extension that brings back the classic Financial Times comment experien
 - **Collapse All** — Collapse replies while keeping top-level comments visible
 - **Always Expand** — Toggle on to auto-expand comments on every FT article you visit
 
+## 🆕 What's new in 2.3
+
+- **Late-loading comments fixed** — Always Expand previously gave up if the
+  comment widget appeared more than 30 seconds after page load (slow pages,
+  lazy mounts). The watcher now downshifts to a cheap slow poll and arms
+  itself whenever comments finally appear.
+- **Works without a reload after install/update** — the popup injects the
+  content script on demand on FT tabs that were already open.
+- **Battery friendly** — background FT tabs stop polling while hidden and
+  catch up the moment you switch back to them.
+- **Badge confirmation** — the toolbar icon briefly shows how many comments
+  were expanded on the current tab.
+- **Dark-mode popup** — follows your system theme.
+
 ## 📸 Screenshots
 
 <p align="center">

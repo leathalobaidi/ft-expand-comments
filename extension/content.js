@@ -16,6 +16,9 @@
   const CORAL_CONTAINER_ID = "coral-shadow-container";
   const CHECK_INTERVAL_MS = 2000;
   const MAX_WAIT_MS = 30000;
+  // After MAX_WAIT_MS the fast poll downshifts to this — comments can mount
+  // minutes after load (lazy widgets, slow connections), so we never give up.
+  const SLOW_CHECK_INTERVAL_MS = 2500;
   // Bounds for the async "expand until stable" loop so a never-resolving
   // "Load More" can never hang the page.
   const EXPAND_MAX_ITERATIONS = 30;
@@ -263,6 +266,8 @@
   let debounceTimer = null;
   let waitInterval = null;
   let cachedShadowRoot = null;
+  let visibilityHandler = null;
+  let totalExpanded = 0; // running count for the toolbar badge
 
   function log() {
     try {
@@ -301,14 +306,30 @@
     return null;
   }
 
-  function autoExpandTick() {
+  // Tell the badge service worker how many comments we've expanded on this tab.
+  function reportBadge() {
+    try {
+      chrome.runtime.sendMessage(
+        { type: "ft-expand-badge", count: totalExpanded },
+        () => void chrome.runtime.lastError // worker may be asleep — fine
+      );
+    } catch (_) {}
+  }
+
+  // catchUp=true marks one-shot triggers (init, cross-tab toggle, tab refocus)
+  // that must run even in a hidden tab. Only the recurring pollers (interval,
+  // mutation observer) are skipped while hidden, to keep background tabs cheap.
+  function autoExpandTick(catchUp) {
     if (!autoExpandEnabled || manualCollapseActive) return;
+    if (!catchUp && document.hidden) return;
     const sr = getShadowRoot();
     if (!sr) return;
     // Non-force: respect comments the user collapsed themselves.
     const { expanded, loadMore } = expandPass(sr, false);
     if (expanded || loadMore) {
       log(`Auto-expanded ${expanded} comments, clicked ${loadMore} load-more.`);
+      totalExpanded += expanded;
+      if (expanded) reportBadge();
     }
   }
 
@@ -357,12 +378,18 @@
     if (periodicCheck) clearInterval(periodicCheck);
     if (debounceTimer) clearTimeout(debounceTimer);
     if (waitInterval) clearInterval(waitInterval);
+    if (visibilityHandler) {
+      try {
+        document.removeEventListener("visibilitychange", visibilityHandler);
+      } catch (_) {}
+    }
     observer = null;
     periodicCheck = null;
     debounceTimer = null;
     waitInterval = null;
     userToggleHandler = null;
     listenerRoot = null;
+    visibilityHandler = null;
   }
   // Exposed so tests (and any future cleanup needs) can stop all activity.
   global.__ftExpandTeardown = teardown;
@@ -377,7 +404,7 @@
       }
       autoExpandEnabled = !!(result && result.alwaysExpand === true);
       log("Always Expand setting:", autoExpandEnabled);
-      autoExpandTick();
+      autoExpandTick(true);
     });
 
     // Debounced MutationObserver to catch dynamically-added comments without
@@ -392,6 +419,13 @@
     // Low-frequency fallback for content the observer misses.
     periodicCheck = unref(setInterval(autoExpandTick, CHECK_INTERVAL_MS));
 
+    // Ticks are skipped while the tab is hidden — catch up the moment the
+    // user comes back to it.
+    visibilityHandler = () => {
+      if (!document.hidden) autoExpandTick(true);
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
+
     // Clean up on navigation away to avoid leaks.
     window.addEventListener("pagehide", teardown, { once: true });
 
@@ -403,21 +437,25 @@
 
   function waitForCoral() {
     const startTime = Date.now();
-    waitInterval = unref(
-      setInterval(() => {
-        const container = document.getElementById(CORAL_CONTAINER_ID);
-        if (container && container.shadowRoot) {
-          clearInterval(waitInterval);
-          waitInterval = null;
-          log("Coral comment widget found.");
-          initializeCommentHandling(container.shadowRoot);
-        } else if (Date.now() - startTime > MAX_WAIT_MS) {
-          clearInterval(waitInterval);
-          waitInterval = null;
-          log("Coral not found within timeout (page may have no comments).");
-        }
-      }, 500)
-    );
+    let slowMode = false;
+    const check = () => {
+      const container = document.getElementById(CORAL_CONTAINER_ID);
+      if (container && container.shadowRoot) {
+        clearInterval(waitInterval);
+        waitInterval = null;
+        log("Coral comment widget found.");
+        initializeCommentHandling(container.shadowRoot);
+      } else if (!slowMode && Date.now() - startTime > MAX_WAIT_MS) {
+        // Comments often mount long after load (lazy widgets, slow pages).
+        // Never give up — downshift to a cheap slow poll so Always Expand
+        // still arms itself whenever the thread finally appears.
+        slowMode = true;
+        clearInterval(waitInterval);
+        waitInterval = unref(setInterval(check, SLOW_CHECK_INTERVAL_MS));
+        log("Coral not found yet — switching to slow polling.");
+      }
+    };
+    waitInterval = unref(setInterval(check, 500));
   }
 
   // Messages from the popup.
@@ -439,6 +477,8 @@
               `Manual expand: ${res.expanded} comments, ${res.loadMore} load-more, ` +
                 `${res.iterations} passes, stable=${res.stable}.`
             );
+            totalExpanded += res.expanded;
+            if (res.expanded) reportBadge();
             sendResponse({
               success: true,
               count: res.expanded,
@@ -496,7 +536,7 @@
       autoExpandEnabled = changes.alwaysExpand.newValue === true;
       manualCollapseActive = false;
       log(`Always Expand changed to: ${autoExpandEnabled}`);
-      autoExpandTick();
+      autoExpandTick(true);
     }
   });
 
